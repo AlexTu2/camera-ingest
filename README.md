@@ -1,24 +1,80 @@
 # camera-ingest
 
-Camera card -> laptop -> NAS, built for a bad link. Written for an Insta360
-Luna Ultra on a six-week trip abroad, but it works with any camera that
-mounts as a USB drive with a `DCIM/` folder (GoPro, DJI, Canon, Fujifilm,
-Nikon, ...): set `SOURCES` to your card's volume name. Not supported: cameras
-that keep video outside `DCIM/` (Sony's `PRIVATE/M4ROOT/`), and phones that
-only connect over MTP.
+**Back up camera footage from the road to a home NAS, over hotel Wi-Fi, a VPN
+tunnel and 250 ms of latency, and know by checksum that every clip arrived
+before you format the card.**
 
-Three properties matter:
+Plug the camera in and walk away. camera-ingest copies the card to the laptop,
+checks that copy against the card, uploads it to the NAS with rsync over SSH,
+then checks the NAS copy too. A tray icon shows live progress and tells you
+two things: when it's safe to unplug, and when it's safe to format.
 
-1. **Nothing is ever deleted from the card.** The card stays a valid second
-   copy until you erase it deliberately, in camera, at home.
-2. **Every step resumes.** `--partial-dir` keeps an interrupted file, and the
-   next run uses it as the basis for rsync's delta transfer, so a 40 GB file
-   picks up where it stopped instead of restarting. (`--append-verify` was
-   dropped: rsync refuses to combine it with `--partial-dir`.)
-3. **Every copy is proved, not assumed.** A sha256 manifest is built at
-   staging time and checked again on the NAS, so a silent truncation or a
-   bad card read shows up as a failure rather than as corrupt footage you
-   find six months later.
+I built it for a six-week trip abroad with an Insta360 Luna Ultra: 8K video,
+about 2 GB per clip, and an upload link that was usually slow and sometimes
+gone. It works with any camera that mounts as a USB drive with a `DCIM/`
+folder (GoPro, DJI, Canon, Fujifilm, Nikon, ...).
+
+## Why not just copy it?
+
+Because "copied" and "safely copied" look the same until you need the file.
+A plain `cp` to a network share has no resume, hangs when the tunnel blips,
+and leaves a truncated file that looks complete. A card that has started
+failing gives you bad reads that look fine. Cloud sync tools don't say when
+it's safe to erase the card. camera-ingest is built around that one
+question: **is every clip on this card provably somewhere else?**
+
+## Highlights
+
+- **Proved, not assumed.** A sha256 manifest is built when the card is copied,
+  checked against the card, and checked again on the NAS. `format-check` then
+  confirms, file by file, that everything on the card is verified on the NAS.
+- **Never deletes from the card.** There is no code path that removes a file
+  from it. You erase the card in camera, by hand, when the tool says it's safe.
+- **Resumes after anything.** Unplugged camera, dropped Wi-Fi, closed laptop,
+  reboot: the next run picks up where the last one stopped, down to the
+  middle of a 2 GB file.
+- **Adaptive parallel upload.** On a high-latency link one TCP stream can't
+  fill the pipe. A small controller adds rsync streams while each one still
+  adds at least 15% throughput, drops one that doesn't, and re-tests every
+  10 minutes. On a relayed Tailscale link it settled on 4 streams at
+  ~3 MB/s, against 0.52 MB/s for a single stream.
+- **Knows which network it's on.** Uploads pause on Wi-Fi you haven't
+  trusted or that's marked metered (a phone hotspot, say), check that
+  Tailscale is up and the NAS reachable, and resume by themselves when the
+  cause clears.
+- **No terminal needed.** A systemd path unit starts it when the camera
+  mounts. A GTK tray app shows progress, speed and time left, sends a
+  notification at each milestone, and offers one button for whatever is
+  blocking it.
+- **Extras:** an editing folder of hard links to every clip (no extra disk
+  space), `prune` to free laptop space once batches are verified on the NAS,
+  and hourly [Immich](https://immich.app) tagging.
+
+## How it works
+
+```
+ card ──stage──▶ laptop ──check──▶ laptop ──push──▶ NAS ──verify──▶ NAS
+       rsync     batch     sha256   (vs card)  rsync ×N  .incoming   sha256   verified
+```
+
+Each card copy becomes a dated **batch** with its own manifest and marker
+files (`staged.ok`, `checked.ok`, `pushed.ok`, `verified.ok`). Every step reads
+those markers, so it's safe to re-run, and `status` prints them as a table.
+Copies are incremental: plug in a card you've added to, and only the new
+clips are copied.
+
+**Stack:** Bash, rsync, OpenSSH, sha256sum, systemd user units, Python + GTK3
+(AyatanaAppIndicator), Tailscale, TrueNAS SCALE. No runtime dependencies
+beyond those.
+
+**Tested:** 34 sandboxed end-to-end cases (fake card, fake NAS, simulated
+link failures) and 57 unit tests for the tray app. `CLAUDE.md` lists the
+bugs that real use turned up, such as an rsync `--compare-dest` mode
+mismatch that once copied clips as all zeros, and the guard added so it
+can't happen again.
+
+**Not supported:** cameras that keep video outside `DCIM/` (Sony's
+`PRIVATE/M4ROOT/`), and phones that only connect over MTP.
 
 ## Setup
 
