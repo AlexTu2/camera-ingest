@@ -1,0 +1,12 @@
+[Unit]
+Description=Start footage ingest when the camera or a card mounts
+
+[Path]
+# udisks mounts removable media under /run/media/<user>/; this fires when
+# anything appears there. The service stays up while anything is mounted, so
+# this doesn't re-fire in a loop.
+DirectoryNotEmpty=/run/media/%u
+Unit=footage-ingest.service
+
+[Install]
+WantedBy=default.target

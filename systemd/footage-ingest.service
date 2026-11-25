@@ -1,0 +1,10 @@
+[Unit]
+Description=Footage ingest: camera -> laptop -> NAS (stage, check, push, verify)
+
+[Service]
+Type=simple
+ExecStart=%h/Projects/footage-ingest/ingest-footage.sh watch
+Nice=5
+# copying and hashing are disk-heavy; keep the desktop responsive
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6

@@ -1,0 +1,9 @@
+[Unit]
+Description=Rescan the Luna Ultra library in Immich and tag Video / Photo / Edited
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/Projects/footage-ingest/immich-tag.sh
+TimeoutStartSec=2h
+Nice=10
