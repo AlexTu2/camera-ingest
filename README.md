@@ -9,6 +9,10 @@ checks that copy against the card, uploads it to the NAS with rsync over SSH,
 then checks the NAS copy too. A tray icon shows live progress and tells you
 two things: when it's safe to unplug, and when it's safe to format.
 
+<p align="center">
+  <img src="docs/tray-menu.png" width="360" alt="The tray menu: all footage backed up, camera not connected, home connection up, with Back up now, Can I format the card?, Open footage folder and Recent messages">
+</p>
+
 I built it for a six-week trip abroad with an Insta360 Luna Ultra: 8K video,
 about 2 GB per clip, and an upload link that was usually slow and sometimes
 gone. It works with any camera that mounts as a USB drive with a `DCIM/`
