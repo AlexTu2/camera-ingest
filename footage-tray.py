@@ -475,6 +475,45 @@ def text_window(title, text, refresh=None):
     return win
 
 
+def help_window(title, sections):
+    """Read-only help: a bold heading per section, its intro, then its options.
+    Laid out with wrapping labels, not spaces, so it lines up in any font."""
+    win = Gtk.Window(title=title)
+    win.set_default_size(640, 600)
+    win.set_keep_above(True)
+    body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=16)
+    names = Gtk.SizeGroup(mode=Gtk.SizeGroupMode.HORIZONTAL)   # one name column width across sections
+    for heading, intro, options in sections:
+        h = Gtk.Label(xalign=0, margin_top=10)
+        h.set_markup(f"<b>{GLib.markup_escape_text(heading)}</b>")
+        body.pack_start(h, False, False, 0)
+        if intro:
+            body.pack_start(Gtk.Label(label=intro, xalign=0, wrap=True, max_width_chars=70),
+                            False, False, 0)
+        if options:
+            grid = Gtk.Grid(column_spacing=16, row_spacing=6, margin_start=12)
+            for row, (name, what) in enumerate(options):
+                n = Gtk.Label(xalign=0, yalign=0)
+                n.set_markup(f"<b>{GLib.markup_escape_text(name)}</b>")
+                names.add_widget(n)
+                grid.attach(n, 0, row, 1, 1)
+                grid.attach(Gtk.Label(label=what, xalign=0, yalign=0, wrap=True, hexpand=True,
+                                      max_width_chars=50), 1, row, 1, 1)
+            body.pack_start(grid, False, False, 0)
+    sw = Gtk.ScrolledWindow(hexpand=True, vexpand=True)
+    sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+    sw.add(body)
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=8)
+    box.pack_start(sw, True, True, 0)
+    cb = Gtk.Button(label="Close", halign=Gtk.Align.END)
+    cb.connect("clicked", lambda *_: win.destroy())
+    box.pack_start(cb, False, False, 0)
+    win.add(box)
+    win.show_all()
+    win.present_with_time(Gtk.get_current_event_time() or GLib.get_monotonic_time() // 1000)
+    return win
+
+
 def parse_status(out):
     """ingest-footage.sh status -> (info lines, header, rows)."""
     info, header, rows = [], [], []
@@ -1085,64 +1124,69 @@ class Tray:
         ("🔴", "Red", "failed: do NOT format", {"error", "notsafe"}),
     ]
 
-    HELP = """\
-THE TOP TWO LINES
-  What the backup is doing right now. The dot is the same colour as the tray icon.
-  If the backup is stuck, one button appears right under them:
-    ▶ Allow uploads on "…"   You're on a Wi-Fi it hasn't seen before. Press this only if
-                             the network's data is unlimited (not a phone hotspot or a
-                             pay-per-GB connection). It remembers the network and uploads.
-    ▶ Connect to home        Turns Tailscale on (the private link to the NAS at home). It
-                             may ask for your password. The upload then carries on.
-    ▶ Resume backup          The backup was cut off (restart, crash). Carries on from
-                             where it stopped; nothing is lost.
-    ▶ Try again              The NAS didn't answer, or a step failed. It also retries by
-                             itself every few minutes.
-
-CAMERA
-  Says whether the cable can be pulled. "Don't unplug" means files are being read
-  from the camera right now.
-  Eject camera               Safely disconnects the camera's storage so you can unplug.
-                             OK to unplug is NOT the same as safe to format.
-
-HOME CONNECTION
-  Whether the laptop can reach the NAS at home. "Slow (relayed)" means it's going
-  through a relay server instead of straight home, so uploads crawl.
-
-BACK UP NOW
-  Does everything: copies anything new from the camera to the laptop, checks the
-  copy, uploads to the NAS, and re-reads every file there to verify it. It normally
-  starts by itself when you plug the camera in; this is for doing it by hand.
-
-CAN I FORMAT THE CARD?
-  Checks every file on the camera against the verified copies on the NAS. The
-  answer arrives as a notification: Safe to format, or NOT safe with a list of the
-  files that aren't backed up yet. Nothing is ever deleted from the card by this
-  program; formatting is always done by you, in the camera.
-
-OPEN FOOTAGE FOLDER
-  Opens ~/Videos/Luna Ultra, every clip on the laptop in one folder.
-
-RECENT MESSAGES
-  Every notification the backup has sent, newest first, in case one popped up
-  while you weren't looking. ⚠ marks the ones that needed attention.
-
-MORE
-  Backup history…            Every batch (one per copy from the camera) and whether it
-                             has been copied, uploaded and verified.
-  Show live log              A terminal showing what the backup is doing, line by line.
-  Test home connection       Tests the link to the NAS now; answer is a notification.
-  What the icon colours mean The colour key; the current one is marked.
-  Quit tray icon             Hides the icon until you next log in. Backups keep
-                             running without it.
-"""
+    # (heading, intro, [(option, what it does), ...]) — keep in step with the menu
+    HELP_SECTIONS = [
+        ("The top two lines",
+         "What the backup is doing right now. The dot is the same colour as the tray icon. "
+         "If the backup is stuck, one button appears right under them:",
+         [("▶ Allow uploads on \"…\"",
+           "You're on a Wi-Fi it hasn't seen before. Press this only if the network's data is "
+           "unlimited (not a phone hotspot or a pay-per-GB connection). It remembers the network "
+           "and uploads."),
+          ("▶ Connect to home",
+           "Turns Tailscale on (the private link to the NAS at home). It may ask for your "
+           "password. The upload then carries on."),
+          ("▶ Resume backup",
+           "The backup was cut off (restart, crash). Carries on from where it stopped; nothing "
+           "is lost."),
+          ("▶ Try again",
+           "The NAS didn't answer, or a step failed. It also retries by itself every few minutes.")]),
+        ("Camera",
+         "Says whether the cable can be pulled. \"Don't unplug\" means files are being read "
+         "from the camera right now.",
+         [("Eject camera",
+           "Safely disconnects the camera's storage so you can unplug. OK to unplug is NOT the "
+           "same as safe to format.")]),
+        ("Home connection",
+         "Whether the laptop can reach the NAS at home. \"Slow (relayed)\" means it's going "
+         "through a relay server instead of straight home, so uploads crawl.",
+         []),
+        ("Back up now",
+         "Does everything: copies anything new from the camera to the laptop, checks the copy, "
+         "uploads to the NAS, and re-reads every file there to verify it. It normally starts by "
+         "itself when you plug the camera in; this is for doing it by hand.",
+         []),
+        ("Can I format the card?",
+         "Checks every file on the camera against the verified copies on the NAS. The answer "
+         "arrives as a notification: Safe to format, or NOT safe with a list of the files that "
+         "aren't backed up yet. Nothing is ever deleted from the card by this program; "
+         "formatting is always done by you, in the camera.",
+         []),
+        ("Open footage folder",
+         "Opens the footage folder: every clip on the laptop in one place.",
+         []),
+        ("Recent messages",
+         "Every notification the backup has sent, newest first, in case one popped up while "
+         "you weren't looking. ⚠ marks the ones that needed attention.",
+         []),
+        ("More",
+         "",
+         [("Backup history…",
+           "Every batch (one per copy from the camera) and whether it has been copied, uploaded "
+           "and verified."),
+          ("Show live log", "A terminal showing what the backup is doing, line by line."),
+          ("Test home connection", "Tests the link to the NAS now; the answer is a notification."),
+          ("What the icon colours mean", "The colour key; the current one is marked."),
+          ("Quit tray icon",
+           "Hides the icon until you next log in. Backups keep running without it.")]),
+    ]
 
     def show_messages(self):
         text_window("Footage backup — recent messages", format_messages(read_messages()),
                     refresh=lambda: format_messages(read_messages()))
 
     def show_help(self):
-        text_window("Footage backup — what each option does", self.HELP)
+        help_window("Footage backup — what each option does", self.HELP_SECTIONS)
 
     def legend_menu(self, phase):
         top = Gtk.MenuItem(label="What the icon colours mean")
